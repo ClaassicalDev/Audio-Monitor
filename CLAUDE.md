@@ -1,0 +1,9 @@
+# CLAUDE.md — Guía para Claude Code y Agentes de IA (`Audio-Monitor`)
+
+Lee primero [`AGENTS.md`](./AGENTS.md) y [`GEMINI.md`](./GEMINI.md), los cuales contienen la especificación completa de arquitectura, el mapa de módulos en `src/` y los **5 invariantes críticos** del proyecto:
+
+1. **Seguridad Anti-Cheat (0% Ban Risk):** Cero llamadas a `OpenProcess`, cero hooks globales (`SetWindowsHookEx` / `GetAsyncKeyState`), cero inyección DLL y cero llamadas COM no documentadas (`IPolicyConfig`). Solo usar `CreateToolhelp32Snapshot`, `EnumWindows` y `ActivateAudioInterfaceAsync("VAD\\Process_Loopback")`.
+2. **System Tray 100% Lock-Free (`src/tray.rs`):** Jamás llamar a `SetWindowPos` o `ShowWindow` de forma síncrona dentro de `tray_wnd_proc` (`WM_TRAY_CALLBACK`) ni desde otro hilo hacia `main_hwnd` (congela a `explorer.exe`). `tray_wnd_proc` solo escribe en `GLOBAL_PENDING_ACTION: AtomicU8`, `tray-worker` usa `ShowWindowAsync` + `InvalidateRect` + `PostMessageW`, y `SetWindowPos` corre exclusivamente en el hilo principal dueño de la ventana (`AudioMonitorApp::ui()`).
+3. **Arranque Minimizado en Bandeja (`src/ui/app.rs`):** Permitir que el Frame 0 inicialice el contexto OpenGL/WGL normalmente y ocultar la ventana con `ShowWindow(hwnd, SW_HIDE)` en el Frame 1 (`self.startup_frames == 2`) desde el propio hilo dueño.
+4. **Estado inicial de Vúmetros (`src/audio/renderer.rs`):** `ChannelLiveStatus::default()` debe inicializar `vu_peak_db: -100.0` (nunca `0.0`), y los canales muteados o inactivos deben forzar `vu_peak_db = -100.0`.
+5. **Host Limpio y Compilación en `vibebox`:** Compilar siempre en `vibebox` (`192.168.0.18`) con `cargo build --release --target x86_64-pc-windows-gnu`, firmar `AudioMonitor.exe` con `Set-AuthenticodeSignature -HashAlgorithm SHA256` y apagar `vibebox` limpiando `/home/user/.cancel-auto`.
